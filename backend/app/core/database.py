@@ -13,7 +13,9 @@ engine = create_async_engine(
     settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://"),
     pool_size=settings.DATABASE_POOL_SIZE,
     max_overflow=settings.DATABASE_MAX_OVERFLOW,
-    pool_pre_ping=True,
+    pool_pre_ping=True,        # verify connection health before each checkout
+    pool_recycle=1800,         # recycle connections every 30 min (avoids idle-timeout drops)
+    pool_timeout=30,           # raise if no connection available within 30 s
     echo=settings.DEBUG,
 )
 

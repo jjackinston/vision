@@ -56,7 +56,8 @@ class TenantPatch(BaseModel):
 
 # ── Helper: safe tenant row → dict ────────────────────────────────────
 def _tenant_row(row) -> dict:
-    tenant, plan, member_count, product_count = row
+    # Row is (Tenant, Plan, member_count) — product_count removed (no tenant_id on products)
+    tenant, plan, member_count = row
     return {
         "id":           str(tenant.id),
         "slug":         tenant.slug,
@@ -68,7 +69,7 @@ def _tenant_row(row) -> dict:
         "stripe_customer_id":     tenant.stripe_customer_id,
         "stripe_subscription_id": tenant.stripe_subscription_id,
         "member_count":  int(member_count or 0),
-        "product_count": int(product_count or 0),
+        "product_count": 0,  # products don't have a tenant_id column in this schema
         "created_at":   tenant.created_at.isoformat() if hasattr(tenant, "created_at") and tenant.created_at else None,
     }
 
@@ -139,18 +140,15 @@ async def list_tenants(
     db: AsyncSession = Depends(get_db),
 ):
     from app.models.tenant import Tenant, Plan, TenantMember
-    from app.models.product import Product
 
     q = (
         select(
             Tenant,
             Plan,
             func.count(TenantMember.id).label("member_count"),
-            func.count(Product.id).label("product_count"),
         )
         .join(Plan, Tenant.plan_id == Plan.id, isouter=True)
         .outerjoin(TenantMember, TenantMember.tenant_id == Tenant.id)
-        .outerjoin(Product, False)  # products have no tenant_id — always 0 for now
         .group_by(Tenant.id, Plan.id)
     )
 

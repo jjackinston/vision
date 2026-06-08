@@ -32,25 +32,40 @@ class InventoryService:
         return result.scalars().all()
 
     async def predict_stockouts(self, days_threshold: int = 30) -> list:
-        """Predict which products will stock out within `days_threshold` days."""
+        """Predict which products will stock out within `days_threshold` days.
+
+        Fixed N+1: was one SalesAnalytic query per inventory row.
+        Now one bulk aggregation query for all product_ids at once.
+        """
         from app.models.inventory import Inventory
         from app.models.remaining_models import SalesAnalytic
-        from sqlalchemy import func
 
-        result = await self.db.execute(select(Inventory))
-        inventories = result.scalars().all()
+        inventories = (await self.db.execute(select(Inventory))).scalars().all()
+        if not inventories:
+            return []
 
+        # ── Single aggregation query for all products ──────────────────
+        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+        product_ids = [inv.product_id for inv in inventories]
+
+        sales_rows = (await self.db.execute(
+            select(
+                SalesAnalytic.product_id,
+                func.sum(SalesAnalytic.units_sold).label("total_units"),
+            )
+            .where(
+                SalesAnalytic.product_id.in_(product_ids),
+                SalesAnalytic.time >= thirty_days_ago,
+            )
+            .group_by(SalesAnalytic.product_id)
+        )).all()
+        # Map: product_id → average daily sales over 30 days
+        sales_map: dict = {str(r.product_id): float(r.total_units or 0) / 30 for r in sales_rows}
+
+        # ── Process predictions ────────────────────────────────────────
         predictions = []
         for inv in inventories:
-            # Calculate average daily sales from last 30 days
-            thirty_days_ago = datetime.utcnow() - timedelta(days=30)
-            sales_result = await self.db.execute(
-                select(func.sum(SalesAnalytic.units_sold))
-                .where(SalesAnalytic.product_id == inv.product_id, SalesAnalytic.time >= thirty_days_ago)
-            )
-            total_units = sales_result.scalar() or 0
-            avg_daily_sales = total_units / 30
-
+            avg_daily_sales = sales_map.get(str(inv.product_id), 0.0)
             if avg_daily_sales > 0:
                 days_remaining = int(inv.quantity_on_hand / avg_daily_sales)
                 stockout_date = date.today() + timedelta(days=days_remaining)
