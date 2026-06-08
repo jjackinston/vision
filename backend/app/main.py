@@ -17,6 +17,66 @@ from app.api.v1.router import api_router
 from app.websocket.router import router as ws_router
 from app.websocket.manager import manager
 
+# ── Sentry — initialise before app creation so all errors are captured ──
+def _init_sentry() -> None:
+    if not settings.SENTRY_DSN:
+        return
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.redis import RedisIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+    import logging as _logging
+
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.ENVIRONMENT,
+        # Performance monitoring
+        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE if settings.is_production else 1.0,
+        profiles_sample_rate=settings.SENTRY_PROFILES_SAMPLE_RATE if settings.is_production else 1.0,
+        integrations=[
+            FastApiIntegration(transaction_style="url"),
+            SqlalchemyIntegration(),
+            CeleryIntegration(monitor_beat_tasks=True),
+            RedisIntegration(),
+            LoggingIntegration(
+                level=_logging.INFO,        # capture INFO+ as breadcrumbs
+                event_level=_logging.ERROR, # send ERROR+ as Sentry events
+            ),
+        ],
+        # Don't leak secrets in Sentry payloads
+        send_default_pii=False,
+        # Ignore known non-actionable errors
+        ignore_errors=[
+            KeyboardInterrupt,
+        ],
+        before_send=_sentry_before_send,
+    )
+
+def _sentry_before_send(event, hint):
+    """
+    Filter out noise before events reach Sentry:
+    - 401 / 403 auth failures (expected in normal operation)
+    - 429 rate-limit hits
+    - Health-check errors
+    """
+    # Drop HTTP exceptions that are expected in normal operation
+    exc_info = hint.get("exc_info")
+    if exc_info:
+        exc_type, exc_value, _ = exc_info
+        # FastAPI / Starlette HTTPException
+        if hasattr(exc_value, "status_code"):
+            if exc_value.status_code in (401, 403, 404, 429):
+                return None
+    # Drop events from /health path
+    request = event.get("request", {})
+    if request.get("url", "").endswith("/health"):
+        return None
+    return event
+
+_init_sentry()
+
 
 # ── Structured JSON logging (production) / human-readable (dev) ──────────────
 class _JSONFormatter(logging.Formatter):
@@ -268,6 +328,28 @@ async def request_id_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     request.state.request_id = request_id
     start_time = time.time()
+
+    # Tag Sentry scope with request ID + tenant (extracted from JWT header cheaply)
+    if settings.SENTRY_DSN:
+        import sentry_sdk
+        with sentry_sdk.configure_scope() as scope:
+            scope.set_tag("request_id", request_id)
+            # Tenant ID is in the Authorization JWT sub-claim — read it without
+            # full verification here (verification happens in get_current_user).
+            auth = request.headers.get("Authorization", "")
+            if auth.startswith("Bearer "):
+                try:
+                    import base64, json as _json
+                    payload_b64 = auth.split(".")[1]
+                    payload_b64 += "=" * (-len(payload_b64) % 4)
+                    claims = _json.loads(base64.b64decode(payload_b64))
+                    tenant_id = claims.get("tenant_id") or claims.get("org_id")
+                    if tenant_id:
+                        scope.set_tag("tenant_id", tenant_id)
+                        scope.set_context("tenant", {"id": tenant_id})
+                except Exception:
+                    pass
+
     response = await call_next(request)
     duration = (time.time() - start_time) * 1000
     response.headers["X-Request-ID"] = request_id
