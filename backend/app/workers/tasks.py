@@ -28,6 +28,12 @@ celery_app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     beat_schedule={
+        # Trial ending reminders: run daily at 9am UTC
+        # Sends emails at 3 days and 1 day before expiry
+        "trial-ending-reminders": {
+            "task": "app.workers.tasks.send_trial_ending_reminders",
+            "schedule": crontab(minute=0, hour=9),
+        },
         # Sync inventory every 30 minutes
         "sync-inventory": {
             "task": "app.workers.tasks.sync_all_inventory",
@@ -380,6 +386,65 @@ def generate_ai_ceo_action_plan(tenant_id: str):
         return await service.get_daily_recommendations(tenant_id)
 
     return run_async(_run())
+
+
+@celery_app.task
+def send_trial_ending_reminders():
+    """
+    Daily task (9am UTC): email every tenant whose trial ends in exactly
+    3 days or 1 day and who has no paid Stripe subscription.
+
+    Fire-and-forget; failures are logged but never propagated.
+    """
+    async def _run():
+        from app.core.database import AsyncSessionLocal
+        from sqlalchemy import select, text
+        from app.models.tenant import Tenant, TenantMember
+        from app.models.user import User
+        from app.services.email_service import EmailService
+        from datetime import date
+
+        today = date.today()
+        remind_days = (3, 1)
+
+        async with AsyncSessionLocal() as db:
+            for days in remind_days:
+                # Tenants whose trial ends exactly `days` days from today
+                result = await db.execute(
+                    text("""
+                        SELECT t.id, t.trial_ends_at, u.email, u.full_name
+                        FROM tenants t
+                        JOIN tenant_members tm ON tm.tenant_id = t.id AND tm.role = 'owner'
+                        JOIN users u ON u.id = tm.user_id
+                        WHERE t.stripe_subscription_id IS NULL
+                          AND t.is_active = TRUE
+                          AND DATE(t.trial_ends_at) = :target_date
+                          AND u.email IS NOT NULL
+                    """),
+                    {"target_date": today + __import__("datetime").timedelta(days=days)},
+                )
+                rows = result.fetchall()
+                for row in rows:
+                    tenant_id, trial_ends_at, email, full_name = row
+                    first_name = (full_name or "").split()[0] if full_name else ""
+                    trial_end_ts = int(trial_ends_at.timestamp()) if trial_ends_at else 0
+                    try:
+                        EmailService.send_trial_ending(
+                            to=email,
+                            first_name=first_name,
+                            days_remaining=days,
+                            trial_end_ts=trial_end_ts,
+                        )
+                        logger.info(
+                            "[trial-reminders] Sent %d-day reminder to %s (tenant %s)",
+                            days, email, tenant_id,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "[trial-reminders] Failed to email %s: %s", email, exc
+                        )
+
+    run_async(_run())
 
 
 @celery_app.task
