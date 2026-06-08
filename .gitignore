@@ -1,0 +1,57 @@
+# ── Secrets (never commit) ────────────────────────────────────
+.env
+.env.local
+.env.production
+.env.*.local
+backend/.env
+backend/.env.production
+frontend/.env.local
+frontend/.env.production
+nginx/ssl/
+
+# ── Runtime logs & debug files ────────────────────────────────
+*.log
+*.err
+*.log.err
+uvicorn*.log
+uvicorn*.err
+stderr.log
+stdout.log
+backend/0
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+*.log
+
+# ── Node ──────────────────────────────────────────────────────
+node_modules/
+.next/
+frontend/.next/
+frontend/node_modules/
+*.tsbuildinfo
+
+# ── Docker ────────────────────────────────────────────────────
+# (docker-compose.yml IS committed — it has no secrets)
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ── IDE ───────────────────────────────────────────────────────
+.idea/
+.vscode/settings.json
+*.code-workspace
+
+# ── QA artifacts ─────────────────────────────────────────────
+qa-*.png

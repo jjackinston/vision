@@ -1,0 +1,257 @@
+version: "3.9"
+
+services:
+  # ──────────────────────────────────────────────
+  # API Backend
+  # ──────────────────────────────────────────────
+  api:
+    build:
+      context: ../../backend
+      dockerfile: ../infrastructure/docker/Dockerfile.api
+    container_name: sellervision_api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://sellervision:${DB_PASSWORD}@postgres:5432/sellervision
+      - REDIS_URL=redis://redis:6379/0
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    env_file:
+      - ../../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - sellervision_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ──────────────────────────────────────────────
+  # Celery Worker
+  # ──────────────────────────────────────────────
+  worker:
+    build:
+      context: ../../backend
+      dockerfile: ../infrastructure/docker/Dockerfile.api
+    container_name: sellervision_worker
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://sellervision:${DB_PASSWORD}@postgres:5432/sellervision
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+    env_file:
+      - ../../.env
+    depends_on:
+      - api
+      - redis
+    networks:
+      - sellervision_net
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # Celery Beat Scheduler
+  # ──────────────────────────────────────────────
+  beat:
+    build:
+      context: ../../backend
+      dockerfile: ../infrastructure/docker/Dockerfile.api
+    container_name: sellervision_beat
+    command: celery -A app.workers.celery_app beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file:
+      - ../../.env
+    depends_on:
+      - worker
+    networks:
+      - sellervision_net
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # Frontend
+  # ──────────────────────────────────────────────
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: ../infrastructure/docker/Dockerfile.frontend
+    container_name: sellervision_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8000
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
+    env_file:
+      - ../../.env
+    depends_on:
+      - api
+    networks:
+      - sellervision_net
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # PostgreSQL + TimescaleDB
+  # ──────────────────────────────────────────────
+  postgres:
+    image: timescale/timescaledb-ha:pg16-latest
+    container_name: sellervision_postgres
+    environment:
+      POSTGRES_DB: sellervision
+      POSTGRES_USER: sellervision
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/home/postgres/pgdata/data
+      - ../../docs/architecture/DATABASE_SCHEMA.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - sellervision_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sellervision"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ──────────────────────────────────────────────
+  # Redis
+  # ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: sellervision_redis
+    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 2gb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - sellervision_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ──────────────────────────────────────────────
+  # Elasticsearch
+  # ──────────────────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.0
+    container_name: sellervision_elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - sellervision_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q green"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ──────────────────────────────────────────────
+  # AI Agent Runner (persistent agent process)
+  # ──────────────────────────────────────────────
+  agent-runner:
+    build:
+      context: ../../backend
+      dockerfile: ../infrastructure/docker/Dockerfile.api
+    container_name: sellervision_agent_runner
+    command: python -m app.workers.agent_runner
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://sellervision:${DB_PASSWORD}@postgres:5432/sellervision
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+    env_file:
+      - ../../.env
+    depends_on:
+      - api
+      - redis
+      - postgres
+    networks:
+      - sellervision_net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2"
+
+  # ──────────────────────────────────────────────
+  # Nginx Reverse Proxy
+  # ──────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: sellervision_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api
+      - frontend
+    networks:
+      - sellervision_net
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # Grafana (Monitoring)
+  # ──────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sellervision_grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../monitoring/grafana-dashboards:/etc/grafana/provisioning/dashboards
+    networks:
+      - sellervision_net
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # Prometheus
+  # ──────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sellervision_prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - sellervision_net
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  elasticsearch_data:
+  grafana_data:
+  prometheus_data:
+
+networks:
+  sellervision_net:
+    driver: bridge

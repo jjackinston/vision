@@ -1,0 +1,152 @@
+# ── SellerVision AI — Render.com Blueprint ───────────────────
+# https://render.com/docs/blueprint-spec
+#
+# Deploy: connect your GitHub repo in the Render dashboard,
+# then select "Blueprint" — Render reads this file and creates
+# all services + databases automatically.
+#
+# After deploy, set the following environment vars in the dashboard:
+#   SECRET_KEY, CLERK_SECRET_KEY, ANTHROPIC_API_KEY,
+#   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
+#   NEXT_PUBLIC_API_URL (= https://<api-service-name>.onrender.com)
+#   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+
+databases:
+  - name: sellervision-db
+    databaseName: sellervision
+    user: sellervision
+    plan: starter            # free tier; upgrade to standard for prod
+
+services:
+  # ── FastAPI backend ────────────────────────────────────────
+  - type: web
+    name: sellervision-api
+    runtime: python
+    plan: starter
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true          # Render auto-generates a secure random value
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sellervision-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: sellervision-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: sellervision-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: sellervision-redis
+          type: redis
+          property: connectionString
+      # Set these manually after deploy:
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_STARTER_PRICE_ID
+        sync: false
+      - key: STRIPE_PROFESSIONAL_PRICE_ID
+        sync: false
+      - key: STRIPE_BUSINESS_PRICE_ID
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false   # e.g. ["https://yourfrontend.onrender.com"]
+
+  # ── Next.js frontend ───────────────────────────────────────
+  - type: web
+    name: sellervision-frontend
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: node .next/standalone/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          name: sellervision-api
+          type: web
+          property: host
+          envVarPrefix: https://
+      # Set these manually after deploy:
+      - key: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+        sync: false
+
+  # ── Celery worker ──────────────────────────────────────────
+  - type: worker
+    name: sellervision-celery
+    runtime: python
+    plan: starter
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A app.workers.tasks worker --loglevel=info --concurrency=2
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        fromService:
+          name: sellervision-api
+          type: web
+          envVarKey: SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sellervision-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: sellervision-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: sellervision-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: sellervision-redis
+          type: redis
+          property: connectionString
+      - key: ANTHROPIC_API_KEY
+        fromService:
+          name: sellervision-api
+          type: web
+          envVarKey: ANTHROPIC_API_KEY
+      - key: OPENAI_API_KEY
+        fromService:
+          name: sellervision-api
+          type: web
+          envVarKey: OPENAI_API_KEY
+
+  # ── Managed Redis ──────────────────────────────────────────
+  - type: redis
+    name: sellervision-redis
+    plan: starter
+    ipAllowList: []              # restrict to internal Render network only

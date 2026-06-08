@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sellervision-worker
+  namespace: sellervision
+  labels:
+    app: sellervision-worker
+    tier: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sellervision-worker
+  template:
+    metadata:
+      labels:
+        app: sellervision-worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9091"
+    spec:
+      containers:
+        - name: celery-worker
+          image: sellervision/api:latest
+          command: ["celery", "-A", "app.workers.tasks", "worker", "--loglevel=info", "--concurrency=4", "-Q", "default,ai,marketplace"]
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+          envFrom:
+            - secretRef:
+                name: sellervision-secrets
+            - configMapRef:
+                name: sellervision-config
+          livenessProbe:
+            exec:
+              command: ["celery", "-A", "app.workers.tasks", "inspect", "ping"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sellervision-beat
+  namespace: sellervision
+  labels:
+    app: sellervision-beat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sellervision-beat
+  template:
+    metadata:
+      labels:
+        app: sellervision-beat
+    spec:
+      containers:
+        - name: celery-beat
+          image: sellervision/api:latest
+          command: ["celery", "-A", "app.workers.tasks", "beat", "--loglevel=info", "--scheduler=redbeat.RedBeatScheduler"]
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          envFrom:
+            - secretRef:
+                name: sellervision-secrets
+            - configMapRef:
+                name: sellervision-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sellervision-agent-runner
+  namespace: sellervision
+  labels:
+    app: sellervision-agent-runner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sellervision-agent-runner
+  template:
+    metadata:
+      labels:
+        app: sellervision-agent-runner
+    spec:
+      containers:
+        - name: agent-runner
+          image: sellervision/api:latest
+          command: ["python", "-m", "app.workers.agent_runner"]
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "4000m"
+              memory: "8Gi"
+          envFrom:
+            - secretRef:
+                name: sellervision-secrets
+            - configMapRef:
+                name: sellervision-config

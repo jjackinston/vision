@@ -1,0 +1,64 @@
+# ── SellerVision AI — Railway Deployment Config ───────────────
+# https://docs.railway.app/reference/config-as-code
+#
+# Setup:
+#   1. railway login && railway link
+#   2. Set env vars: railway variables set KEY=value
+#   3. railway up
+#
+# Required env vars (set in Railway dashboard or via CLI):
+#   DATABASE_URL          — Railway Postgres plugin injects this automatically
+#   REDIS_URL             — Railway Redis plugin injects this automatically
+#   SECRET_KEY            — openssl rand -hex 32
+#   CLERK_SECRET_KEY      — Clerk dashboard → API Keys
+#   ANTHROPIC_API_KEY     — console.anthropic.com
+#   STRIPE_SECRET_KEY     — Stripe dashboard → Developers
+#   STRIPE_WEBHOOK_SECRET — Stripe → Webhooks → signing secret
+#   NEXT_PUBLIC_API_URL   — https://<your-api-service>.up.railway.app (set on frontend service)
+#   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY — Clerk dashboard (set on frontend service)
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "backend/Dockerfile"
+
+[deploy]
+startCommand = "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log"
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "api"
+source = "."
+
+  [services.build]
+  dockerfilePath = "backend/Dockerfile"
+
+  [services.deploy]
+  startCommand = "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log"
+  healthcheckPath = "/health"
+  healthcheckTimeout = 120
+
+[[services]]
+name = "frontend"
+source = "."
+
+  [services.build]
+  dockerfilePath = "frontend/Dockerfile"
+
+  [services.deploy]
+  startCommand = "node .next/standalone/server.js"
+  healthcheckPath = "/"
+  healthcheckTimeout = 60
+
+[[services]]
+name = "celery-worker"
+source = "."
+
+  [services.build]
+  dockerfilePath = "backend/Dockerfile"
+
+  [services.deploy]
+  startCommand = "celery -A app.workers.tasks worker --loglevel=info --concurrency=2 -Q celery"
+  healthcheckPath = ""   # workers have no HTTP port

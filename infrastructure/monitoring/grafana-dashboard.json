@@ -1,0 +1,135 @@
+{
+  "title": "SellerVision AI — Platform Operations",
+  "uid": "sellervision-ops",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "API Request Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "rate(http_requests_total{job=\"sellervision-api\"}[5m])",
+          "legendFormat": "{{method}} {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "reqps", "color": {"mode": "palette-classic"}}
+      }
+    },
+    {
+      "id": 2,
+      "title": "API P95 Latency",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"sellervision-api\"}[5m]))",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{job=\"sellervision-api\"}[5m]))",
+          "legendFormat": "P50"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "s", "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 0.5}, {"color": "red", "value": 2}]}}
+      }
+    },
+    {
+      "id": 3,
+      "title": "Error Rate",
+      "type": "gauge",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "rate(http_requests_total{status=~\"5..\"}[5m]) / rate(http_requests_total[5m]) * 100"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0, "max": 100,
+          "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Active Tenants",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 8},
+      "targets": [{"expr": "sellervision_active_tenants_total"}],
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "thresholds"}}}
+    },
+    {
+      "id": 5,
+      "title": "AI Agent Run Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "rate(sellervision_agent_runs_total[10m])",
+          "legendFormat": "{{agent_type}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "ops"}}
+    },
+    {
+      "id": 6,
+      "title": "Celery Queue Length",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {
+          "expr": "celery_queue_length",
+          "legendFormat": "{{queue_name}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Database Connections",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [
+        {"expr": "pg_stat_activity_count{state=\"active\"}", "legendFormat": "Active"},
+        {"expr": "pg_stat_activity_count{state=\"idle\"}", "legendFormat": "Idle"}
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Redis Memory",
+      "type": "gauge",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 24},
+      "targets": [{"expr": "redis_memory_used_bytes / redis_memory_max_bytes * 100"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 70}, {"color": "red", "value": 85}]}
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "API Revenue Tracked (30d)",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 24},
+      "targets": [{"expr": "sellervision_total_revenue_tracked_usd"}],
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}}
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "query",
+        "query": "label_values(up, namespace)",
+        "current": {"value": "sellervision"}
+      }
+    ]
+  }
+}

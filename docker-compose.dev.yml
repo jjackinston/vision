@@ -1,0 +1,39 @@
+version: "3.9"
+
+# Lightweight dev services — only the data layer.
+# Start with: docker compose -f docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sv_postgres
+    environment:
+      POSTGRES_DB: sellervision
+      POSTGRES_USER: sellervision
+      POSTGRES_PASSWORD: sellervision
+    ports:
+      - "5432:5432"
+    volumes:
+      - sv_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sellervision"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: sv_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - sv_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  sv_postgres_data:
+  sv_redis_data:

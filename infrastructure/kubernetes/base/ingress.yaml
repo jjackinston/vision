@@ -1,0 +1,67 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sellervision-ingress
+  namespace: sellervision
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://app.sellervision.ai"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+spec:
+  tls:
+    - hosts:
+        - app.sellervision.ai
+        - api.sellervision.ai
+      secretName: sellervision-tls
+  rules:
+    - host: app.sellervision.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sellervision-frontend
+                port:
+                  number: 80
+    - host: api.sellervision.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sellervision-api
+                port:
+                  number: 80
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sellervision
+  labels:
+    name: sellervision
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sellervision-config
+  namespace: sellervision
+data:
+  APP_NAME: "SellerVision AI"
+  APP_ENV: "production"
+  API_V1_STR: "/api/v1"
+  CORS_ORIGINS: "https://app.sellervision.ai"
+  RATE_LIMIT_PER_MINUTE: "60"
+  ANTHROPIC_MODEL: "claude-sonnet-4-6"
+  OPENAI_MODEL: "gpt-4o"
+  LOG_LEVEL: "INFO"
+  REDIS_HOST: "sellervision-redis"
+  REDIS_PORT: "6379"

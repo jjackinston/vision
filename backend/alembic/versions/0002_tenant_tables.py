@@ -1,0 +1,376 @@
+﻿"""Tenant-level tables (created in public schema for dev)
+
+Revision ID: 0002
+Revises: 0001
+Create Date: 2026-06-05
+"""
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
+
+revision = "0002"
+down_revision = "0001"
+branch_labels = None
+depends_on = None
+
+TABLES_IN_ORDER = [
+    "marketplace_assets", "notifications", "sales_analytics", "workflows",
+    "agent_runs", "trends", "ppc_campaigns", "listings", "supplier_products",
+    "suppliers", "competitors", "inventory_events", "inventory", "product_keywords",
+    "keyword_metrics", "keywords", "product_metrics", "products", "warehouses",
+]
+
+
+def upgrade() -> None:
+    op.create_table("warehouses",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("name", sa.String(255), nullable=False),
+        sa.Column("type", sa.String(50), server_default="'fba'"),
+        sa.Column("address", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("country_code", sa.String(5)),
+        sa.Column("marketplace_codes", ARRAY(sa.Text), server_default=sa.text("'{}'")),
+        sa.Column("active", sa.Boolean, server_default="true"),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+
+    op.create_table("products",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("asin", sa.String(20)),
+        sa.Column("walmart_item_id", sa.String(50)),
+        sa.Column("shopify_product_id", sa.String(100)),
+        sa.Column("ebay_item_id", sa.String(100)),
+        sa.Column("tiktok_product_id", sa.String(100)),
+        sa.Column("etsy_listing_id", sa.String(100)),
+        sa.Column("title", sa.String(1000)),
+        sa.Column("brand", sa.String(255)),
+        sa.Column("category", sa.String(255)),
+        sa.Column("subcategory", sa.String(255)),
+        sa.Column("marketplace", sa.String(50), server_default="'amazon'"),
+        sa.Column("image_urls", ARRAY(sa.Text), server_default=sa.text("'{}'")),
+        sa.Column("current_price", sa.Numeric(12, 2)),
+        sa.Column("buy_box_price", sa.Numeric(12, 2)),
+        sa.Column("cost", sa.Numeric(12, 2)),
+        sa.Column("weight_lbs", sa.Numeric(8, 3)),
+        sa.Column("dimensions", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("is_tracked", sa.Boolean, server_default="false"),
+        sa.Column("is_own_product", sa.Boolean, server_default="false"),
+        sa.Column("tags", ARRAY(sa.Text), server_default=sa.text("'{}'")),
+        sa.Column("notes", sa.Text),
+        sa.Column("opportunity_score", sa.Numeric(5, 2)),
+        sa.Column("risk_score", sa.Numeric(5, 2)),
+        sa.Column("profit_score", sa.Numeric(5, 2)),
+        sa.Column("competition_score", sa.Numeric(5, 2)),
+        sa.Column("market_entry_score", sa.Numeric(5, 2)),
+        sa.Column("ai_analysis", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_index("ix_products_asin", "products", ["asin"])
+    op.create_index("ix_products_marketplace", "products", ["marketplace"])
+    op.create_index("ix_products_is_tracked", "products", ["is_tracked"])
+
+    op.create_table("product_metrics",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("time", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("product_id", UUID(as_uuid=True), sa.ForeignKey("products.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("marketplace", sa.String(50)),
+        sa.Column("price", sa.Numeric(12, 2)),
+        sa.Column("bsr_rank", sa.Integer),
+        sa.Column("bsr_category", sa.String(255)),
+        sa.Column("review_count", sa.Integer),
+        sa.Column("review_rating", sa.Numeric(3, 2)),
+        sa.Column("estimated_sales", sa.Integer),
+        sa.Column("estimated_revenue", sa.Numeric(12, 2)),
+        sa.Column("seller_count", sa.Integer),
+        sa.Column("buy_box_seller", sa.String(255)),
+        sa.Column("stock_level", sa.String(50)),
+        sa.Column("metadata", JSONB, server_default=sa.text("'{}'")),
+    )
+    op.create_index("ix_product_metrics_time", "product_metrics", ["time"])
+    op.create_index("ix_product_metrics_product_id", "product_metrics", ["product_id"])
+
+    op.create_table("keywords",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("keyword", sa.String(500), nullable=False),
+        sa.Column("marketplace", sa.String(50), server_default="'amazon'"),
+        sa.Column("monthly_searches", sa.Integer),
+        sa.Column("search_volume_trend", sa.Numeric(5, 2)),
+        sa.Column("cpc", sa.Numeric(8, 4)),
+        sa.Column("competition_level", sa.String(20)),
+        sa.Column("difficulty_score", sa.Numeric(5, 2)),
+        sa.Column("opportunity_score", sa.Numeric(5, 2)),
+        sa.Column("ppc_score", sa.Numeric(5, 2)),
+        sa.Column("seo_score", sa.Numeric(5, 2)),
+        sa.Column("intent", sa.String(50)),
+        sa.Column("cluster_id", UUID(as_uuid=True)),
+        sa.Column("parent_keyword", sa.String(500)),
+        sa.Column("related_keywords", ARRAY(sa.Text), server_default=sa.text("'{}'")),
+        sa.Column("ai_analysis", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("last_updated", sa.DateTime(timezone=True)),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_index("ix_keywords_keyword", "keywords", ["keyword"])
+    op.create_index("ix_keywords_marketplace", "keywords", ["marketplace"])
+
+    op.create_table("keyword_metrics",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("time", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("keyword_id", UUID(as_uuid=True), sa.ForeignKey("keywords.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("search_volume", sa.Integer),
+        sa.Column("cpc", sa.Numeric(8, 4)),
+        sa.Column("ranking_products", sa.Integer),
+        sa.Column("top_3_asins", ARRAY(sa.Text), server_default=sa.text("'{}'")),
+        sa.Column("sponsored_count", sa.Integer),
+    )
+
+    op.create_table("product_keywords",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("product_id", UUID(as_uuid=True), sa.ForeignKey("products.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("keyword_id", UUID(as_uuid=True), sa.ForeignKey("keywords.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("organic_rank", sa.Integer),
+        sa.Column("sponsored_rank", sa.Integer),
+        sa.Column("indexed", sa.Boolean, server_default="false"),
+        sa.Column("relevance_score", sa.Numeric(5, 2)),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+
+    op.create_table("inventory",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("product_id", UUID(as_uuid=True), sa.ForeignKey("products.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("warehouse_id", UUID(as_uuid=True), sa.ForeignKey("warehouses.id")),
+        sa.Column("marketplace", sa.String(50)),
+        sa.Column("sku", sa.String(255)),
+        sa.Column("fnsku", sa.String(255)),
+        sa.Column("quantity_on_hand", sa.Integer, server_default="0"),
+        sa.Column("quantity_reserved", sa.Integer, server_default="0"),
+        sa.Column("quantity_inbound", sa.Integer, server_default="0"),
+        sa.Column("reorder_point", sa.Integer, server_default="50"),
+        sa.Column("reorder_quantity", sa.Integer, server_default="200"),
+        sa.Column("lead_time_days", sa.Integer, server_default="30"),
+        sa.Column("unit_cost", sa.Numeric(12, 4)),
+        sa.Column("stockout_date", sa.Date),
+        sa.Column("overstock_risk", sa.Boolean, server_default="false"),
+        sa.Column("last_order_date", sa.Date),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_index("ix_inventory_product_id", "inventory", ["product_id"])
+
+    op.create_table("inventory_events",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("time", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("inventory_id", UUID(as_uuid=True), sa.ForeignKey("inventory.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("event_type", sa.String(50), nullable=False),
+        sa.Column("quantity_change", sa.Integer, nullable=False),
+        sa.Column("quantity_after", sa.Integer, nullable=False),
+        sa.Column("reference_id", sa.String(255)),
+        sa.Column("notes", sa.Text),
+    )
+
+    op.create_table("competitors",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("product_id", UUID(as_uuid=True), sa.ForeignKey("products.id", ondelete="CASCADE")),
+        sa.Column("asin", sa.String(20)),
+        sa.Column("marketplace", sa.String(50)),
+        sa.Column("seller_id", sa.String(100)),
+        sa.Column("brand", sa.String(255)),
+        sa.Column("title", sa.String(1000)),
+        sa.Column("price", sa.Numeric(12, 2)),
+        sa.Column("review_count", sa.Integer),
+        sa.Column("review_rating", sa.Numeric(3, 2)),
+        sa.Column("monthly_sales", sa.Integer),
+        sa.Column("monthly_revenue", sa.Numeric(12, 2)),
+        sa.Column("weakness_analysis", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("threat_level", sa.String(20)),
+        sa.Column("tracked_since", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+
+    op.create_table("suppliers",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("name", sa.String(255), nullable=False),
+        sa.Column("country", sa.String(100)),
+        sa.Column("contact_name", sa.String(255)),
+        sa.Column("contact_email", sa.String(255)),
+        sa.Column("contact_phone", sa.String(50)),
+        sa.Column("website", sa.Text),
+        sa.Column("alibaba_url", sa.Text),
+        sa.Column("trust_score", sa.Numeric(5, 2)),
+        sa.Column("risk_score", sa.Numeric(5, 2)),
+        sa.Column("quality_score", sa.Numeric(5, 2)),
+        sa.Column("reliability_score", sa.Numeric(5, 2)),
+        sa.Column("avg_lead_time_days", sa.Integer),
+        sa.Column("min_order_qty", sa.Integer),
+        sa.Column("payment_terms", sa.String(255)),
+        sa.Column("shipping_methods", ARRAY(sa.Text), server_default=sa.text("'{}'")),
+        sa.Column("certifications", ARRAY(sa.Text), server_default=sa.text("'{}'")),
+        sa.Column("notes", sa.Text),
+        sa.Column("ai_analysis", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+
+    op.create_table("supplier_products",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("supplier_id", UUID(as_uuid=True), sa.ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("product_id", UUID(as_uuid=True), sa.ForeignKey("products.id")),
+        sa.Column("supplier_sku", sa.String(255)),
+        sa.Column("unit_cost", sa.Numeric(12, 4)),
+        sa.Column("moq", sa.Integer),
+        sa.Column("sample_cost", sa.Numeric(10, 2)),
+        sa.Column("lead_time_days", sa.Integer),
+        sa.Column("is_preferred", sa.Boolean, server_default="false"),
+        sa.Column("last_quoted_at", sa.DateTime(timezone=True)),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+
+    op.create_table("listings",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("product_id", UUID(as_uuid=True), sa.ForeignKey("products.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("marketplace", sa.String(50), nullable=False),
+        sa.Column("external_id", sa.String(255)),
+        sa.Column("title", sa.String(1000)),
+        sa.Column("bullet_points", ARRAY(sa.Text), server_default=sa.text("'{}'")),
+        sa.Column("description", sa.Text),
+        sa.Column("a_plus_content", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("backend_keywords", ARRAY(sa.Text), server_default=sa.text("'{}'")),
+        sa.Column("images", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("price", sa.Numeric(12, 2)),
+        sa.Column("sale_price", sa.Numeric(12, 2)),
+        sa.Column("status", sa.String(50), server_default="'draft'"),
+        sa.Column("seo_score", sa.Numeric(5, 2)),
+        sa.Column("completeness_score", sa.Numeric(5, 2)),
+        sa.Column("ai_generated", sa.Boolean, server_default="false"),
+        sa.Column("published_at", sa.DateTime(timezone=True)),
+        sa.Column("last_synced_at", sa.DateTime(timezone=True)),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+
+    op.create_table("ppc_campaigns",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("product_id", UUID(as_uuid=True), sa.ForeignKey("products.id")),
+        sa.Column("marketplace", sa.String(50)),
+        sa.Column("campaign_id", sa.String(255)),
+        sa.Column("name", sa.String(500)),
+        sa.Column("type", sa.String(50)),
+        sa.Column("status", sa.String(50), server_default="'enabled'"),
+        sa.Column("daily_budget", sa.Numeric(10, 2)),
+        sa.Column("spend_today", sa.Numeric(10, 2), server_default="0"),
+        sa.Column("impressions", sa.Integer, server_default="0"),
+        sa.Column("clicks", sa.Integer, server_default="0"),
+        sa.Column("orders", sa.Integer, server_default="0"),
+        sa.Column("revenue", sa.Numeric(12, 2), server_default="0"),
+        sa.Column("acos", sa.Numeric(5, 2)),
+        sa.Column("roas", sa.Numeric(5, 2)),
+        sa.Column("tacos", sa.Numeric(5, 2)),
+        sa.Column("ai_recommendations", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_index("ix_ppc_campaigns_product_id", "ppc_campaigns", ["product_id"])
+
+    op.create_table("trends",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("topic", sa.String(500), nullable=False),
+        sa.Column("source", sa.String(50), nullable=False),
+        sa.Column("category", sa.String(255)),
+        sa.Column("trend_score", sa.Numeric(5, 2)),
+        sa.Column("momentum_score", sa.Numeric(5, 2)),
+        sa.Column("viral_score", sa.Numeric(5, 2)),
+        sa.Column("lifespan_prediction", sa.String(50)),
+        sa.Column("peak_date_estimate", sa.DateTime(timezone=True)),
+        sa.Column("related_products", ARRAY(sa.Text), server_default=sa.text("'{}'")),
+        sa.Column("data_points", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("ai_analysis", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("detected_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_index("ix_trends_topic", "trends", ["topic"])
+
+    op.create_table("agent_runs",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("agent_type", sa.String(100), nullable=False),
+        sa.Column("status", sa.String(50), server_default="'pending'"),
+        sa.Column("input", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("output", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("steps", JSONB, server_default=sa.text("'[]'")),
+        sa.Column("tokens_used", sa.Integer),
+        sa.Column("cost_usd", sa.Numeric(10, 6)),
+        sa.Column("error", sa.Text),
+        sa.Column("started_at", sa.DateTime(timezone=True)),
+        sa.Column("completed_at", sa.DateTime(timezone=True)),
+    )
+
+    op.create_table("workflows",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("name", sa.String(255), nullable=False),
+        sa.Column("description", sa.Text),
+        sa.Column("trigger_type", sa.String(100)),
+        sa.Column("trigger_config", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("steps", JSONB, server_default=sa.text("'[]'")),
+        sa.Column("is_active", sa.Boolean, server_default="true"),
+        sa.Column("last_run_at", sa.DateTime(timezone=True)),
+        sa.Column("run_count", sa.Integer, server_default="0"),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+
+    op.create_table("sales_analytics",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("time", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("product_id", UUID(as_uuid=True), sa.ForeignKey("products.id")),
+        sa.Column("marketplace", sa.String(50)),
+        sa.Column("orders", sa.Integer, server_default="0"),
+        sa.Column("units_sold", sa.Integer, server_default="0"),
+        sa.Column("gross_revenue", sa.Numeric(14, 2), server_default="0"),
+        sa.Column("refunds", sa.Numeric(14, 2), server_default="0"),
+        sa.Column("platform_fees", sa.Numeric(14, 2), server_default="0"),
+        sa.Column("ad_spend", sa.Numeric(14, 2), server_default="0"),
+        sa.Column("cogs", sa.Numeric(14, 2), server_default="0"),
+        sa.Column("net_profit", sa.Numeric(14, 2), server_default="0"),
+        sa.Column("roi", sa.Numeric(6, 4)),
+    )
+    op.create_index("ix_sales_analytics_time", "sales_analytics", ["time"])
+
+    op.create_table("notifications",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("type", sa.String(100), nullable=False),
+        sa.Column("title", sa.String(500), nullable=False),
+        sa.Column("body", sa.Text),
+        sa.Column("action_url", sa.Text),
+        sa.Column("metadata", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("is_read", sa.Boolean, server_default="false"),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_index("ix_notifications_user_id", "notifications", ["user_id"])
+
+    op.create_table("marketplace_assets",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("creator_id", UUID(as_uuid=True), sa.ForeignKey("public.users.id")),
+        sa.Column("type", sa.String(50), nullable=False),
+        sa.Column("name", sa.String(255), nullable=False),
+        sa.Column("description", sa.Text),
+        sa.Column("price", sa.Numeric(10, 2)),
+        sa.Column("downloads", sa.Integer, server_default="0"),
+        sa.Column("rating", sa.Numeric(3, 2)),
+        sa.Column("rating_count", sa.Integer, server_default="0"),
+        sa.Column("asset_data", JSONB, server_default=sa.text("'{}'")),
+        sa.Column("tags", ARRAY(sa.Text), server_default=sa.text("'{}'")),
+        sa.Column("preview_images", ARRAY(sa.Text), server_default=sa.text("'{}'")),
+        sa.Column("is_published", sa.Boolean, server_default="false"),
+        sa.Column("is_verified", sa.Boolean, server_default="false"),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+
+
+def downgrade() -> None:
+    for t in TABLES_IN_ORDER:
+        op.drop_table(t)

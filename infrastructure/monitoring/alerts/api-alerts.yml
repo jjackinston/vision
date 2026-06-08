@@ -1,0 +1,69 @@
+groups:
+  - name: sellervision-api
+    rules:
+      - alert: APIHighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "High API error rate (>5%)"
+          description: "Error rate is {{ $value | humanizePercentage }} over last 5 minutes"
+
+      - alert: APIHighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "API P95 latency > 2s"
+          description: "P95 latency is {{ $value | humanizeDuration }}"
+
+      - alert: APIDown
+        expr: up{job="sellervision-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "SellerVision API is down"
+
+      - alert: WorkerQueueBacklog
+        expr: celery_queue_length > 1000
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Celery queue backlog > 1000 tasks"
+          description: "Queue {{ $labels.queue_name }} has {{ $value }} pending tasks"
+
+      - alert: DatabaseConnectionPoolExhausted
+        expr: pg_stat_activity_count{state="active"} / pg_settings_max_connections > 0.85
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "PostgreSQL connection pool > 85% utilized"
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "Redis memory usage > 85%"
+
+      - alert: AgentRunFailureRate
+        expr: rate(sellervision_agent_runs_total{status="error"}[15m]) / rate(sellervision_agent_runs_total[15m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          team: ai
+        annotations:
+          summary: "AI agent failure rate > 10%"
+          description: "Agent {{ $labels.agent_type }} failing at {{ $value | humanizePercentage }}"

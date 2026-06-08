@@ -1,0 +1,70 @@
+# Core
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.9.0
+pydantic-settings>=2.6.0
+python-multipart>=0.0.9
+
+# Database
+sqlalchemy[asyncio]>=2.0.30
+asyncpg>=0.29.0
+alembic>=1.13.0
+psycopg2-binary>=2.9.9
+
+# Cache & Queue
+redis[hiredis]>=5.0.0
+celery[redis]>=5.4.0
+flower>=2.0.1
+
+# AI & ML
+openai>=1.50.0
+anthropic>=0.37.0
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-anthropic>=0.3.0
+langgraph>=0.2.0
+langchain-community>=0.3.0
+tiktoken>=0.7.0
+pinecone-client>=3.0.0
+sentence-transformers>=3.0.0
+scikit-learn>=1.6.0
+numpy>=1.26.0
+pandas>=2.2.0
+
+# Search
+elasticsearch[async]>=8.14.0
+
+# HTTP
+httpx>=0.27.0
+aiohttp>=3.9.0
+
+# Auth
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+PyJWT>=2.8.0
+svix>=1.13.0  # Clerk webhook signature verification
+
+# Payments
+stripe>=10.0.0
+
+# Integrations
+boto3>=1.34.0
+python-dotenv>=1.0.0
+
+# MCP
+mcp>=1.0.0
+
+# Monitoring
+prometheus-fastapi-instrumentator>=7.0.0
+
+# Utils
+tenacity>=8.4.0
+structlog>=24.4.0
+python-slugify>=8.0.4
+Pillow>=10.4.0
+
+# Testing
+pytest>=8.3.0
+pytest-asyncio>=0.23.0
+pytest-cov>=5.0.0
+factory-boy>=3.3.0
