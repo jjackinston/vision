@@ -6,10 +6,10 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { UserButton } from "@clerk/nextjs";
 import {
-  LayoutDashboard, Search, Target, TrendingUp, Package,
+  Search, Target, TrendingUp, Package,
   FileText, BarChart3, Bot, Zap, ShoppingBag, Settings,
-  ChevronLeft, Bell, Command, Brain, Warehouse, Users,
-  DollarSign, Globe, Cpu, Lightbulb, Sparkles, X,
+  ChevronLeft, Bell, Command, Brain, Warehouse,
+  DollarSign, Globe, Cpu, Lightbulb, Sparkles, X, Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { NotificationPanel } from "@/components/layout/NotificationPanel";
+import { MobileDrawer, MobileBottomNav } from "@/components/layout/MobileNav";
 import { VoiceAssistant } from "@/components/agents/VoiceAssistant";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { useQuery } from "@tanstack/react-query";
@@ -73,21 +74,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [collapsed, setCollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [trialDismissed, setTrialDismissed] = useState(false);
   const pathname = usePathname();
 
-  // ── Real-time WebSocket events ──────────────────────────────────────────────
   const { handleRawMessage, unreadCount: wsUnreadCount, clearUnread } = useRealtimeEvents();
 
-  // Fetch the current user's tenant_id so the WebSocket subscribes to the right channel
   const { data: meData } = useQuery({
     queryKey: ["me"],
     queryFn: () => api.getMe(),
-    staleTime: Infinity, // user + tenant don't change during a session
-    retry: false,        // dev: avoid noise if auth bypass returns nothing
+    staleTime: Infinity,
+    retry: false,
   });
 
-  // Derive WS URL from the API base URL (dev: http://localhost:8000 → ws://localhost:8000)
   const wsUrl = (() => {
     if (typeof window === "undefined") return null;
     const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -103,7 +102,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     staleTime: 1000 * 60,
     refetchInterval: 1000 * 60,
   });
-  // Merge polled count with live WS counter — whichever is higher wins
   const polledCount: number = (unreadData as any)?.count ?? 0;
   const unreadCount: number = polledCount + wsUnreadCount;
 
@@ -114,7 +112,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   });
   const sub: any = subData ?? {};
   const isTrialing = sub.status === "free_trial" || sub.status === "trialing";
-  // trial_end is a unix timestamp from Stripe; free_trial has no end date so show 14 days from "now" as UX placeholder
   const trialDaysLeft = sub.trial_end
     ? Math.max(0, Math.ceil((sub.trial_end * 1000 - Date.now()) / 86_400_000))
     : 14;
@@ -130,13 +127,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <TooltipProvider>
-      <div className="flex h-screen bg-[#0A0B0E] text-white overflow-hidden">
-        {/* Sidebar */}
+      {/* ── Mobile drawer (slide-in nav) — md:hidden ──────────────── */}
+      <MobileDrawer open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
+
+      <div className="flex h-[100dvh] bg-[#0A0B0E] text-white overflow-hidden">
+
+        {/* ── Desktop sidebar — hidden on mobile ────────────────────── */}
         <motion.aside
           initial={false}
           animate={{ width: collapsed ? 68 : 240 }}
           transition={{ duration: 0.2, ease: "easeInOut" }}
-          className="flex flex-col border-r border-white/5 bg-[#0D0E12] relative z-20"
+          className="hidden md:flex flex-col border-r border-white/5 bg-[#0D0E12] relative z-20 flex-shrink-0"
         >
           {/* Logo */}
           <div className="flex items-center gap-3 px-4 py-5 border-b border-white/5">
@@ -171,16 +172,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             <Link
                               href={item.href}
                               className={cn(
-                                "flex items-center gap-3 px-2 py-2 rounded-lg text-sm font-medium transition-all duration-150",
+                                "flex items-center gap-3 px-2 py-2 rounded-lg text-sm font-medium transition-all duration-150 min-h-[36px]",
                                 isActive
                                   ? "bg-violet-500/15 text-violet-300"
                                   : "text-white/50 hover:text-white hover:bg-white/5"
                               )}
                             >
                               <Icon className={cn("w-4 h-4 flex-shrink-0", isActive && "text-violet-400")} />
-                              {!collapsed && (
-                                <span className="flex-1 truncate">{item.name}</span>
-                              )}
+                              {!collapsed && <span className="flex-1 truncate">{item.name}</span>}
                               {!collapsed && item.badge && (
                                 <Badge
                                   variant="outline"
@@ -196,9 +195,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                               )}
                             </Link>
                           </TooltipTrigger>
-                          {collapsed && (
-                            <TooltipContent side="right">{item.name}</TooltipContent>
-                          )}
+                          {collapsed && <TooltipContent side="right">{item.name}</TooltipContent>}
                         </Tooltip>
                       </li>
                     );
@@ -208,11 +205,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ))}
           </nav>
 
-          {/* Collapse button */}
+          {/* Collapse toggle */}
           <div className="p-3 border-t border-white/5">
             <Button
-              variant="ghost"
-              size="sm"
+              variant="ghost" size="sm"
               onClick={() => setCollapsed(!collapsed)}
               className="w-full justify-center text-white/30 hover:text-white hover:bg-white/5 h-8"
             >
@@ -223,31 +219,58 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </motion.aside>
 
-        {/* Main */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Top bar */}
-          <header className="h-14 border-b border-white/5 bg-[#0D0E12] flex items-center justify-between px-6 flex-shrink-0">
-            <Button
-              variant="ghost"
-              onClick={() => setCommandOpen(true)}
-              className="flex items-center gap-2 text-sm text-white/40 bg-white/5 rounded-lg px-4 h-8 hover:bg-white/10 hover:text-white/70 w-72"
-            >
-              <Command className="w-3.5 h-3.5" />
-              <span>Search anything...</span>
-              <kbd className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded">⌘K</kbd>
-            </Button>
+        {/* ── Main column ───────────────────────────────────────────── */}
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
 
-            <div className="flex items-center gap-3">
-              <VoiceAssistant />
+          {/* Top bar */}
+          <header className="h-14 border-b border-white/5 bg-[#0D0E12] flex items-center justify-between px-4 md:px-6 flex-shrink-0 gap-3">
+
+            {/* Mobile: hamburger + logo | Desktop: search bar */}
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              {/* Hamburger — mobile only */}
+              <button
+                onClick={() => setMobileNavOpen(true)}
+                className="flex md:hidden p-2 -ml-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-all flex-shrink-0"
+                aria-label="Open navigation"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+
+              {/* Mobile logo wordmark */}
+              <div className="flex md:hidden items-center gap-2 flex-shrink-0">
+                <div className="w-6 h-6 rounded-md bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
+                  <Brain className="w-3 h-3 text-white" />
+                </div>
+                <span className="text-sm font-bold text-white">SellerVision</span>
+              </div>
+
+              {/* Desktop: command palette trigger */}
               <Button
                 variant="ghost"
-                size="icon"
+                onClick={() => setCommandOpen(true)}
+                className="hidden md:flex items-center gap-2 text-sm text-white/40 bg-white/5 rounded-lg px-4 h-8 hover:bg-white/10 hover:text-white/70 w-72"
+              >
+                <Command className="w-3.5 h-3.5" />
+                <span>Search anything...</span>
+                <kbd className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded">⌘K</kbd>
+              </Button>
+            </div>
+
+            {/* Right side actions */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Voice assistant — hidden on small mobile to save space */}
+              <div className="hidden sm:block">
+                <VoiceAssistant />
+              </div>
+              <Button
+                variant="ghost" size="icon"
                 onClick={() => { setNotificationsOpen(true); clearUnread(); }}
-                className="relative text-white/40 hover:text-white hover:bg-white/5 h-8 w-8"
+                className="relative text-white/40 hover:text-white hover:bg-white/5 h-9 w-9 md:h-8 md:w-8"
+                aria-label="Notifications"
               >
                 <Bell className="w-4 h-4" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-violet-500 rounded-full" />
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-violet-500 rounded-full" />
                 )}
               </Button>
               {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && (
@@ -266,25 +289,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 transition={{ duration: 0.2 }}
                 className="overflow-hidden flex-shrink-0"
               >
-                <div className="bg-gradient-to-r from-violet-600/90 to-blue-600/90 px-6 py-2 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-white text-sm">
+                <div className="bg-gradient-to-r from-violet-600/90 to-blue-600/90 px-4 md:px-6 py-2.5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-white text-xs md:text-sm min-w-0">
                     <Sparkles className="w-3.5 h-3.5 text-yellow-300 flex-shrink-0" />
-                    <span>
-                      <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> left on your free trial.
-                      Upgrade to unlock all 23 modules and unlimited usage.
+                    <span className="truncate">
+                      <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> left on trial.{" "}
+                      <span className="hidden sm:inline">Upgrade to unlock all 23 modules.</span>
                     </span>
                   </div>
-                  <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <button
                       onClick={handleUpgradeClick}
-                      className="bg-white text-violet-700 font-semibold text-xs px-3 py-1 rounded-full hover:bg-white/90 transition-colors"
+                      className="bg-white text-violet-700 font-semibold text-xs px-3 py-1 rounded-full hover:bg-white/90 transition-colors whitespace-nowrap"
                     >
-                      Upgrade Now
+                      Upgrade
                     </button>
                     <button
                       onClick={() => setTrialDismissed(true)}
-                      className="text-white/60 hover:text-white transition-colors"
-                      aria-label="Dismiss"
+                      className="text-white/60 hover:text-white transition-colors p-1"
+                      aria-label="Dismiss trial banner"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -294,29 +317,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
           </AnimatePresence>
 
-          {/* Page content */}
-          <main className="flex-1 overflow-auto bg-[#0A0B0E]">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={pathname}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.15 }}
-                className="h-full"
-              >
-                <ErrorBoundary>
-                  {children}
-                </ErrorBoundary>
-              </motion.div>
-            </AnimatePresence>
+          {/* Page content — add bottom padding on mobile for the tab bar */}
+          <main className="flex-1 overflow-auto bg-[#0A0B0E] pb-[env(safe-area-inset-bottom)] md:pb-0">
+            <div className="pb-16 md:pb-0 h-full">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={pathname}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.15 }}
+                  className="h-full"
+                >
+                  <ErrorBoundary>
+                    {children}
+                  </ErrorBoundary>
+                </motion.div>
+              </AnimatePresence>
+            </div>
           </main>
         </div>
-
-        {/* Overlays */}
-        <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
-        <NotificationPanel open={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
       </div>
+
+      {/* Mobile bottom tab bar */}
+      <MobileBottomNav />
+
+      {/* Overlays */}
+      <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
+      <NotificationPanel open={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
     </TooltipProvider>
   );
 }
