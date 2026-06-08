@@ -38,6 +38,17 @@ function fmt(n: number, prefix = "$") {
 export default function AICEODashboard() {
   const { recommendations, summary, isLoading: aiLoading, refetch } = useCEODashboard();
   const [period, setPeriod] = useState("30d");
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+
+  // Check if tenant has any tracked products — show onboarding banner if not
+  const { data: productCheck } = useQuery({
+    queryKey: ["products-onboarding-check"],
+    queryFn: () => api.listProducts({ tracked: true, limit: 1 }),
+    staleTime: 1000 * 60 * 10,
+    retry: false,
+  });
+  const hasProducts = (productCheck as any)?.total > 0;
+  const showOnboardingBanner = !hasProducts && !onboardingDismissed;
 
   const { data: overview } = useQuery({
     queryKey: ["analytics-overview", period],
@@ -116,6 +127,39 @@ export default function AICEODashboard() {
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto">
+      {/* Onboarding banner — shown to new tenants with no products */}
+      {showOnboardingBanner && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-between gap-4 mb-6 px-5 py-4 rounded-2xl border border-violet-500/30 bg-violet-500/10"
+        >
+          <div className="flex items-center gap-3">
+            <Sparkles className="w-5 h-5 text-violet-400 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-white">Welcome! Finish setting up your account</p>
+              <p className="text-xs text-gray-400">Connect a marketplace and import products to see live data.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              onClick={() => window.location.href = "/onboarding"}
+              className="bg-violet-600 hover:bg-violet-500 text-white text-xs h-8"
+            >
+              Start Setup
+              <ArrowRight className="w-3 h-3 ml-1" />
+            </Button>
+            <button
+              onClick={() => setOnboardingDismissed(true)}
+              className="text-gray-500 hover:text-gray-300 text-xs transition-colors px-2"
+            >
+              Dismiss
+            </button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}

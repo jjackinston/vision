@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import select, func
 import logging
 import time
 import uuid
@@ -189,10 +190,45 @@ async def _ws_redis_subscriber():
             await asyncio.sleep(30)
 
 
+async def _ensure_plans_seeded():
+    """
+    Ensure subscription plans exist in the database.
+    Runs at startup — lightweight (single SELECT then bulk INSERT if empty).
+    Safe to run against a production DB: only inserts if plans table is empty.
+    """
+    from app.core.database import AsyncSessionLocal
+    from app.models.tenant import Plan
+    from decimal import Decimal
+    from sqlalchemy import func
+
+    PLANS = [
+        {"name": "Starter",      "price_monthly": Decimal("49.00"),  "price_annual": Decimal("470.00"),  "limits": {"products": 50,   "keywords": 500,   "api_calls": 10000,  "users": 1,  "marketplaces": 2, "agents": 2}, "features": {"ai_analysis": True,  "competitor_tracking": False, "ppc_automation": False, "api_access": False, "white_label": False}},
+        {"name": "Professional", "price_monthly": Decimal("149.00"), "price_annual": Decimal("1430.00"), "limits": {"products": 100,  "keywords": 5000,  "api_calls": 100000, "users": 3,  "marketplaces": 4, "agents": 5}, "features": {"ai_analysis": True,  "competitor_tracking": True,  "ppc_automation": True,  "api_access": False, "white_label": False}},
+        {"name": "Business",     "price_monthly": Decimal("299.00"), "price_annual": Decimal("2870.00"), "limits": {"products": 500,  "keywords": 25000, "api_calls": 500000, "users": 10, "marketplaces": 6, "agents": 7}, "features": {"ai_analysis": True,  "competitor_tracking": True,  "ppc_automation": True,  "api_access": True,  "white_label": False}},
+        {"name": "Agency",       "price_monthly": Decimal("599.00"), "price_annual": Decimal("5750.00"), "limits": {"products": -1,   "keywords": -1,    "api_calls": -1,     "users": 25, "marketplaces": 6, "agents": 7}, "features": {"ai_analysis": True,  "competitor_tracking": True,  "ppc_automation": True,  "api_access": True,  "white_label": True}},
+    ]
+
+    try:
+        async with AsyncSessionLocal() as db:
+            count = await db.scalar(select(func.count()).select_from(Plan))
+            if count and count >= 4:
+                logger.debug("Plans already seeded (%d rows)", count)
+                return
+            for p in PLANS:
+                existing = await db.scalar(select(Plan).where(Plan.name == p["name"]))
+                if not existing:
+                    db.add(Plan(is_active=True, **p))
+            await db.commit()
+            logger.info("Plans seeded successfully")
+    except Exception as exc:
+        logger.warning("Could not seed plans (non-fatal): %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _stockout_task, _ws_subscriber_task
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    await _ensure_plans_seeded()
     _stockout_task = asyncio.create_task(_stockout_alert_loop())
     _ws_subscriber_task = asyncio.create_task(_ws_redis_subscriber())
     yield
