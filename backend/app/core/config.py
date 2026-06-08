@@ -89,6 +89,9 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"]
 
+    # Admin panel
+    ADMIN_SECRET_KEY: str = ""   # set a long random value in production; empty = admin disabled
+
     # Email (Resend)
     RESEND_API_KEY: str = ""
     EMAIL_FROM: str = "SellerVision AI <hello@sellervision.ai>"

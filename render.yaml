@@ -91,6 +91,8 @@ services:
         value: "0.1"
       - key: SENTRY_PROFILES_SAMPLE_RATE
         value: "0.1"
+      - key: ADMIN_SECRET_KEY
+        sync: false   # generate a long random string; empty = admin panel disabled
 
   # ── Next.js frontend ───────────────────────────────────────
   - type: web
