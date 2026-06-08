@@ -165,7 +165,7 @@ export default function OnboardingPage() {
 
   const markComplete = useMutation({
     mutationFn: () =>
-      api.client.patch("/tenants/me/settings", { onboarding_complete: true }),
+      api.patchTenantSettings({ onboarding_complete: true }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["me"] });
       router.push("/dashboard");

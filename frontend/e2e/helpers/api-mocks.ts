@@ -109,11 +109,11 @@ export const FIXTURES = {
   },
 
   billing: {
-    subscription: null,
+    subscription: null as string | null,
     plan: "Professional",
     status: "trialing",
-    trial_ends_at: new Date(Date.now() + 7 * 86400000).toISOString(),
-    current_period_end: null,
+    trial_ends_at: new Date(Date.now() + 7 * 86400000).toISOString() as string | null,
+    current_period_end: null as string | null,
   },
 
   plans: [

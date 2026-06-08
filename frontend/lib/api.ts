@@ -410,6 +410,12 @@ class APIClient {
     return this.createCheckoutSession(planId);
   }
 
+  /** Update tenant-level settings (e.g. mark onboarding complete). */
+  async patchTenantSettings(data: Record<string, unknown>) {
+    const { data: result } = await this.client.patch("/tenants/me/settings", data);
+    return result;
+  }
+
   // ── Team management ────────────────────────────────────────────────────
 
   /** List all members of the current tenant. */

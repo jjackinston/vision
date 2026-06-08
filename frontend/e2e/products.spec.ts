@@ -117,7 +117,7 @@ test.describe("Products — tracked tab", () => {
 test.describe("Products — plan limit", () => {
   test("at-limit banner appears when products_tracked >= limit", async ({ page }) => {
     await mockAllApis(page, {
-      usage: { products_tracked: 250, limits: { products: 250 }, products_limit: 250 },
+      usage: { products_tracked: 250, limits: { products: 250 }, products_limit: 250, agents_used: 0, agents_limit: 15 },
     });
     await page.goto("/products");
     await page.waitForLoadState("networkidle");

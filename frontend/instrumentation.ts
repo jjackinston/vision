@@ -18,5 +18,9 @@ export const onRequestError = async (
   context: { routerKind: string; routePath: string; routeType: string }
 ) => {
   const Sentry = await import("@sentry/nextjs");
-  Sentry.captureRequestError(err, request, context);
+  // Next.js onRequestError provides { path, method }; Sentry's RequestInfo also
+  // requires `headers`. We don't have them here so cast to avoid a type error —
+  // Sentry handles missing headers gracefully at runtime.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Sentry.captureRequestError(err, request as any, context);
 };
