@@ -72,6 +72,15 @@ class UserService:
 
         await self.db.commit()
         await self.db.refresh(user)
+
+        # Fire welcome email (non-blocking)
+        try:
+            from app.services.email_service import EmailService
+            first_name = (full_name or "").split()[0] if full_name else ""
+            EmailService.send_welcome(to=email, first_name=first_name)
+        except Exception:
+            pass  # email never blocks user creation
+
         return user
 
     async def update_clerk_user(self, clerk_data: dict) -> None:

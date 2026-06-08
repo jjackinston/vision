@@ -58,6 +58,9 @@ mcp>=1.0.0
 prometheus-fastapi-instrumentator>=7.0.0
 sentry-sdk[fastapi,sqlalchemy,celery,redis,asyncio]>=2.0.0
 
+# Transactional email
+resend>=2.0.0
+
 # Utils
 tenacity>=8.4.0
 structlog>=24.4.0

@@ -140,12 +140,15 @@ _ws_subscriber_task: asyncio.Task | None = None
 
 async def _stockout_alert_loop():
     """
-    Background task: every 5 minutes query inventory for near-stockout items
-    and push real-time WebSocket alerts to all affected tenants.
+    Background task: every 5 minutes query inventory for near-stockout items,
+    push real-time WebSocket alerts, and send low-stock email digests (once/day).
     """
     from app.core.database import AsyncSessionLocal
     from app.websocket.manager import push_inventory_alert
     from sqlalchemy import text
+    from datetime import date as _date
+
+    _last_email_date: dict = {}  # tenant_id → date last emailed (rate-limit to 1/day)
 
     while True:
         try:
@@ -191,6 +194,58 @@ async def _stockout_alert_loop():
 
             if rows:
                 logger.info(f"[stockout-loop] Pushed alerts for {len(rows)} near-stockout SKU(s)")
+
+            # ── Low-stock email digest (once per day per tenant) ──────
+            # Group critical items (≤7 days) and send to tenant owners
+            critical = [
+                r for r in rows
+                if int(r[2] or 0) <= 7  # days_remaining
+            ]
+            if critical:
+                try:
+                    today = _date.today()
+                    # Re-query to get tenant context (main query has no tenant_id)
+                    async with AsyncSessionLocal() as db2:
+                        owner_rows = await db2.execute(
+                            text("""
+                                SELECT DISTINCT ON (tm.tenant_id)
+                                    tm.tenant_id,
+                                    u.email,
+                                    u.full_name
+                                FROM tenant_members tm
+                                JOIN users u ON u.id = tm.user_id
+                                WHERE tm.role = 'owner' AND u.email IS NOT NULL
+                                LIMIT 50
+                            """)
+                        )
+                        owners = owner_rows.fetchall()
+
+                    from app.services.email_service import EmailService
+                    items = [
+                        {
+                            "product_name": str(r[1]),
+                            "sku": str(r[0]),
+                            "qty_on_hand": int(r[3] or 0),
+                            "days_remaining": max(int(r[2] or 0), 0),
+                        }
+                        for r in critical
+                    ]
+
+                    for owner_row in owners:
+                        tenant_id_str = str(owner_row[0])
+                        if _last_email_date.get(tenant_id_str) == today:
+                            continue  # already emailed today
+                        _last_email_date[tenant_id_str] = today
+                        EmailService.send_low_stock_alert(
+                            to=owner_row[1],
+                            items=items,
+                        )
+                        logger.info(
+                            "[stockout-loop] Low-stock email sent to %s (%d items)",
+                            owner_row[1], len(items),
+                        )
+                except Exception as email_exc:
+                    logger.warning("[stockout-loop] Email error: %s", email_exc)
 
         except asyncio.CancelledError:
             break

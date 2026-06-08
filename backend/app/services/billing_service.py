@@ -302,6 +302,49 @@ class BillingService:
         await self.db.commit()
         logger.info(f"Tenant {tenant_id} subscribed to plan {plan_id} (sub: {subscription_id})")
 
+        # Send billing receipt email (non-blocking)
+        try:
+            from app.services.email_service import EmailService
+            from app.models.user import User
+            from app.models.tenant import TenantMember as _TM
+
+            # Find the tenant owner's email
+            owner_result = await self.db.execute(
+                select(User)
+                .join(_TM, _TM.user_id == User.id)
+                .where(_TM.tenant_id == tenant_id, _TM.role == "owner")
+                .limit(1)
+            )
+            owner = owner_result.scalar_one_or_none()
+            if owner:
+                # Pull amount + period from Stripe session if present
+                amount_cents = int(session.get("amount_total") or 0)
+                period_end_ts = 0
+                invoice_url = None
+                if subscription_id and _stripe_configured():
+                    try:
+                        sub = stripe.Subscription.retrieve(subscription_id)
+                        period_end_ts = sub.current_period_end
+                        if sub.latest_invoice:
+                            inv = stripe.Invoice.retrieve(str(sub.latest_invoice))
+                            invoice_url = inv.hosted_invoice_url
+                            if not amount_cents:
+                                amount_cents = inv.amount_paid
+                    except Exception:
+                        pass
+                plan_display = (plan_id or "Professional").title()
+                first_name = (owner.full_name or "").split()[0] if owner.full_name else ""
+                EmailService.send_billing_receipt(
+                    to=owner.email,
+                    first_name=first_name,
+                    plan_name=plan_display,
+                    amount_cents=amount_cents,
+                    period_end_ts=period_end_ts,
+                    invoice_url=invoice_url,
+                )
+        except Exception as exc:
+            logger.warning(f"Could not send billing receipt email: {exc}")
+
     async def handle_subscription_updated(self, subscription: dict) -> None:
         """Sync plan changes (upgrades, downgrades) from Stripe."""
         subscription_id = subscription.get("id")
@@ -365,6 +408,32 @@ class BillingService:
         )
         await self.db.commit()
         logger.info(f"Tenant {tenant.id} downgraded to Starter (subscription {subscription_id} deleted)")
+
+        # Send cancellation email (non-blocking)
+        try:
+            from app.services.email_service import EmailService
+            from app.models.user import User
+            from app.models.tenant import TenantMember as _TM
+
+            owner_result = await self.db.execute(
+                select(User)
+                .join(_TM, _TM.user_id == User.id)
+                .where(_TM.tenant_id == tenant.id, _TM.role == "owner")
+                .limit(1)
+            )
+            owner = owner_result.scalar_one_or_none()
+            if owner:
+                period_end = subscription.get("current_period_end", 0)
+                plan_name = "Professional"  # best-effort; plan was just cleared
+                first_name = (owner.full_name or "").split()[0] if owner.full_name else ""
+                EmailService.send_subscription_cancelled(
+                    to=owner.email,
+                    first_name=first_name,
+                    plan_name=plan_name,
+                    access_until_ts=period_end,
+                )
+        except Exception as exc:
+            logger.warning(f"Could not send cancellation email: {exc}")
 
     async def handle_payment_failed(self, invoice: dict) -> None:
         """Mark tenant past-due on payment failure; log for dunning."""

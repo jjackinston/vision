@@ -89,6 +89,11 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"]
 
+    # Email (Resend)
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = "SellerVision AI <hello@sellervision.ai>"
+    EMAIL_REPLY_TO: str = "support@sellervision.ai"
+
     # Monitoring
     SENTRY_DSN: str = ""
     SENTRY_TRACES_SAMPLE_RATE: float = 0.1   # 10% of transactions in prod
