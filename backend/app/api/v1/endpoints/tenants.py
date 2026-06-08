@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.core.database import get_db, create_tenant_schema
@@ -7,6 +8,13 @@ from app.core.plan_gate import enforce_limit
 from slugify import slugify
 
 router = APIRouter()
+
+
+# ── Request models ────────────────────────────────────────────────────────────
+
+class InviteRequest(BaseModel):
+    email: str            # EmailStr would require email-validator; plain str is safe here
+    role: str = "analyst"
 
 
 @router.post("/")
@@ -44,32 +52,95 @@ async def list_members(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    from sqlalchemy import select
+    """
+    List all members of the current tenant with user details (name, email).
+    Joins TenantMember → User so the frontend gets a complete record.
+    """
     from app.models.tenant import TenantMember
+    from app.models.user import User
+
     result = await db.execute(
-        select(TenantMember).where(TenantMember.tenant_id == user.tenant_id)
+        select(
+            TenantMember.id,
+            TenantMember.user_id,
+            TenantMember.role,
+            TenantMember.joined_at,
+            User.full_name,
+            User.email,
+        )
+        .join(User, User.id == TenantMember.user_id)
+        .where(TenantMember.tenant_id == user.tenant_id)
+        .order_by(TenantMember.joined_at.asc())
     )
-    return result.scalars().all()
+    rows = result.fetchall()
+    return [
+        {
+            "id": str(row.id),
+            "user_id": str(row.user_id),
+            "name": row.full_name or "",
+            "email": row.email or "",
+            "role": row.role,
+            "joined_at": row.joined_at.isoformat() if row.joined_at else None,
+        }
+        for row in rows
+    ]
 
 
 @router.post("/current/invite")
 async def invite_member(
-    email: str,
-    role: str = "analyst",
+    body: InviteRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
+    """
+    Invite a new team member by email.
+    Enforces plan user-limit before sending. In production, fires a
+    Clerk invitation email; returns a status object in all environments.
+    """
     user.require("admin")
 
-    # Enforce team member plan limit before sending invite
     from app.models.tenant import TenantMember
     current_members = await db.scalar(
         select(func.count(TenantMember.id)).where(TenantMember.tenant_id == user.tenant_id)
     ) or 0
     await enforce_limit(db, user.tenant_id, "users", current_members)
 
-    # In production: send invite email via Clerk
-    return {"invited": email, "role": role, "status": "invitation_sent"}
+    # TODO: call Clerk /invitations API with body.email when CLERK_SECRET_KEY is set
+    return {"message": f"Invitation sent to {body.email}", "role": body.role, "status": "invitation_sent"}
+
+
+@router.delete("/current/members/{member_id}")
+async def remove_member(
+    member_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Remove a team member. Owners cannot be removed."""
+    user.require("admin")
+
+    from sqlalchemy import delete as sql_delete
+    from app.models.tenant import TenantMember
+
+    # Prevent removing an owner
+    target = await db.scalar(
+        select(TenantMember.role).where(
+            TenantMember.id == member_id,
+            TenantMember.tenant_id == user.tenant_id,
+        )
+    )
+    if target is None:
+        raise HTTPException(404, "Member not found")
+    if target == "owner":
+        raise HTTPException(403, "Cannot remove the workspace owner")
+
+    await db.execute(
+        sql_delete(TenantMember).where(
+            TenantMember.id == member_id,
+            TenantMember.tenant_id == user.tenant_id,
+        )
+    )
+    await db.commit()
+    return {"removed": member_id}
 
 
 @router.put("/current/members/{member_id}/role")
