@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from app.core.database import get_db
 from app.core.security import get_current_user, CurrentUser
+from app.core.plan_gate import require_plan
 from app.services.analytics_service import AnalyticsService
 from app.services.ceo_dashboard_service import CEODashboardService, DigitalTwinService
 
@@ -89,9 +90,9 @@ async def simulate_scenario(
     parameters: dict,
     forecast_months: int = Query(6, le=24),
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_plan("business")),
 ):
-    """Module 19: Digital Twin -- what-if simulation."""
+    """Module 19: Digital Twin -- what-if simulation. Requires Business plan or higher."""
     service = DigitalTwinService(db=db)
     return await service.simulate(user.tenant_id, scenario_type, parameters, forecast_months)
 

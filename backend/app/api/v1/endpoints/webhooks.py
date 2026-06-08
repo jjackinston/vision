@@ -35,6 +35,9 @@ async def stripe_webhook(
             await service.handle_subscription_updated(event["data"]["object"])
         elif etype == "customer.subscription.deleted":
             await service.handle_subscription_deleted(event["data"]["object"])
+        elif etype == "invoice.paid":
+            # Re-activate tenants that were flagged past-due after payment succeeds
+            await service.handle_invoice_paid(event["data"]["object"])
         elif etype == "invoice.payment_failed":
             await service.handle_payment_failed(event["data"]["object"])
         else:

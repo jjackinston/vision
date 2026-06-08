@@ -9,6 +9,7 @@ import asyncio
 
 from app.core.database import get_db
 from app.core.security import get_current_user, CurrentUser
+from app.core.plan_gate import require_plan
 from app.agents.agent_system import agent_graph, AgentState
 from langchain_core.messages import HumanMessage
 
@@ -44,7 +45,7 @@ async def list_agents(user: CurrentUser = Depends(get_current_user)):
 async def run_agent(
     agent_name: str,
     request: AgentRunRequest = AgentRunRequest(),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_plan("professional")),
 ):
     """Trigger a single agent run."""
     user.require("write")

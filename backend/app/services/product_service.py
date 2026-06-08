@@ -151,7 +151,23 @@ class ProductService:
 
     # ── Mutations — bust product list cache ────────────────────────────
 
-    async def track_product(self, product_id: UUID) -> None:
+    async def track_product(self, product_id: UUID, tenant_id: str | None = None) -> None:
+        """Mark a product as tracked.
+
+        If `tenant_id` is supplied, the plan's product tracking limit is enforced
+        before the write.  Pass None to skip the check (e.g. internal/admin calls).
+        """
+        from sqlalchemy import func
+
+        if tenant_id:
+            # Count currently tracked products for this tenant
+            tracked_count = await self.db.scalar(
+                select(func.count(Product.id)).where(Product.is_tracked == True)
+            ) or 0
+            # Raises HTTP 402 if the plan limit is reached
+            from app.core.plan_gate import enforce_limit
+            await enforce_limit(self.db, tenant_id, "products", tracked_count)
+
         await self.db.execute(
             update(Product).where(Product.id == product_id).values(is_tracked=True)
         )

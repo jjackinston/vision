@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 from app.core.database import get_db, create_tenant_schema
 from app.core.security import get_current_user, CurrentUser
+from app.core.plan_gate import enforce_limit
 from slugify import slugify
 
 router = APIRouter()
@@ -58,6 +60,14 @@ async def invite_member(
     user: CurrentUser = Depends(get_current_user),
 ):
     user.require("admin")
+
+    # Enforce team member plan limit before sending invite
+    from app.models.tenant import TenantMember
+    current_members = await db.scalar(
+        select(func.count(TenantMember.id)).where(TenantMember.tenant_id == user.tenant_id)
+    ) or 0
+    await enforce_limit(db, user.tenant_id, "users", current_members)
+
     # In production: send invite email via Clerk
     return {"invited": email, "role": role, "status": "invitation_sent"}
 

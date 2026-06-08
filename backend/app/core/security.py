@@ -107,7 +107,9 @@ async def _get_dev_user(db: AsyncSession) -> "CurrentUser":
 
 def require_subscription():
     """
-    Returns a FastAPI dependency that checks the current user's tenant is active.
+    Returns a FastAPI dependency that checks the current user's tenant is active
+    and that their trial has not expired without a paid subscription.
+
     Usage:
         user: CurrentUser = Depends(require_subscription())
     """
@@ -115,20 +117,12 @@ def require_subscription():
         credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
         db: AsyncSession = Depends(get_db),
     ) -> CurrentUser:
-        # Resolve user exactly as get_current_user does
         current_user = await get_current_user(credentials, db)
 
-        from sqlalchemy import select
-        from app.models.tenant import Tenant
-        result = await db.execute(
-            select(Tenant.is_active).where(Tenant.id == current_user.tenant_id)
-        )
-        is_active = result.scalar()
-        if is_active is False:
-            raise HTTPException(
-                status_code=402,
-                detail="Subscription past-due — update your payment method at /settings?section=billing",
-            )
+        # Delegate to plan_gate for consistent expiry + past-due logic
+        from app.core.plan_gate import _assert_subscription_active
+        await _assert_subscription_active(db, current_user.tenant_id)
+
         return current_user
 
     return _dep

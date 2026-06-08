@@ -435,6 +435,27 @@ class BillingService:
         except Exception as exc:
             logger.warning(f"Could not send cancellation email: {exc}")
 
+    async def handle_invoice_paid(self, invoice: dict) -> None:
+        """Re-activate a past-due tenant when payment succeeds."""
+        customer_id = invoice.get("customer")
+        if not customer_id:
+            return
+
+        from app.models.tenant import Tenant
+        result = await self.db.execute(
+            select(Tenant).where(Tenant.stripe_customer_id == customer_id)
+        )
+        tenant = result.scalar_one_or_none()
+        if not tenant:
+            return
+
+        if not tenant.is_active:
+            await self.db.execute(
+                update(Tenant).where(Tenant.id == tenant.id).values(is_active=True)
+            )
+            await self.db.commit()
+            logger.info(f"Tenant {tenant.id} re-activated after successful payment")
+
     async def handle_payment_failed(self, invoice: dict) -> None:
         """Mark tenant past-due on payment failure; log for dunning."""
         customer_id = invoice.get("customer")

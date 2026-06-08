@@ -81,20 +81,9 @@ async def track_product(
 ):
     """Track a product — blocked when plan limit is reached or subscription is past-due."""
     user.require("write")
-
-    # Enforce products-tracked plan limit
-    from app.services.billing_service import BillingService, PLAN_FEATURES
-    billing = BillingService(db)
-    usage = await billing.get_usage(user.tenant_id)
-    limit = usage.get("products_limit", 0)
-    if limit > 0 and usage.get("products_tracked", 0) >= limit:
-        raise HTTPException(
-            status_code=402,
-            detail=f"Product limit reached ({limit}). Upgrade your plan at /settings?section=billing",
-        )
-
     service = ProductService(db, user.tenant_slug)
-    await service.track_product(product_id)
+    # enforce_limit is called inside track_product when tenant_id is passed
+    await service.track_product(product_id, tenant_id=user.tenant_id)
     return {"message": "Product tracking enabled", "product_id": str(product_id)}
 
 
