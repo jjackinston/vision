@@ -55,3 +55,8 @@ Thumbs.db
 
 # ── QA artifacts ─────────────────────────────────────────────
 qa-*.png
+
+# ── Playwright ────────────────────────────────────────────────
+frontend/playwright-report/
+frontend/test-results/
+frontend/.playwright/
