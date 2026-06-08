@@ -57,6 +57,10 @@ services:
       # Set these manually after deploy:
       - key: CLERK_SECRET_KEY
         sync: false
+      - key: CLERK_WEBHOOK_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        sync: false   # https://<sellervision-frontend>.onrender.com (or custom domain)
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: OPENAI_API_KEY
@@ -90,14 +94,13 @@ services:
         value: production
       - key: PORT
         value: "3000"
+      # Set after API service deploys — value = https://<sellervision-api>.onrender.com
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          name: sellervision-api
-          type: web
-          property: host
-          envVarPrefix: https://
+        sync: false
       # Set these manually after deploy:
       - key: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
         sync: false
 
   # ── Celery worker ──────────────────────────────────────────
@@ -137,15 +140,11 @@ services:
           type: redis
           property: connectionString
       - key: ANTHROPIC_API_KEY
-        fromService:
-          name: sellervision-api
-          type: web
-          envVarKey: ANTHROPIC_API_KEY
+        sync: false
       - key: OPENAI_API_KEY
-        fromService:
-          name: sellervision-api
-          type: web
-          envVarKey: OPENAI_API_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
 
   # ── Managed Redis ──────────────────────────────────────────
   - type: redis
