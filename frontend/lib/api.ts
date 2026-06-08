@@ -409,6 +409,75 @@ class APIClient {
   async createSubscription(planId: string, _paymentMethod?: string) {
     return this.createCheckoutSession(planId);
   }
+
+  // ── Team management ────────────────────────────────────────────────────
+
+  /** List all members of the current tenant. */
+  async getMembers() {
+    const { data } = await this.client.get("/tenants/current/members");
+    return data as Array<{
+      id: string;
+      user_id: string;
+      name: string;
+      email: string;
+      role: string;
+      joined_at: string;
+    }>;
+  }
+
+  /** Send an invite email to a new team member. */
+  async inviteMember(email: string, role: string) {
+    const { data } = await this.client.post("/tenants/current/invite", { email, role });
+    return data as { message: string };
+  }
+
+  /** Remove a member from the current tenant. */
+  async removeMember(memberId: string) {
+    const { data } = await this.client.delete(`/tenants/current/members/${memberId}`);
+    return data;
+  }
+
+  /** Change a member's role. */
+  async updateMemberRole(memberId: string, role: string) {
+    const { data } = await this.client.patch(`/tenants/current/members/${memberId}`, { role });
+    return data;
+  }
+
+  // ── API Keys ───────────────────────────────────────────────────────────
+
+  /** List all active API keys for the current tenant (no raw key). */
+  async getApiKeys() {
+    const { data } = await this.client.get("/auth/api-keys");
+    return data as Array<{
+      id: string;
+      name: string;
+      prefix: string;
+      created_at: string;
+      last_used_at: string | null;
+      scopes: string[];
+    }>;
+  }
+
+  /**
+   * Create a new API key. The raw `key` is returned ONCE — store it
+   * immediately; subsequent calls only return the prefix.
+   */
+  async createApiKey(name: string, scopes: string[] = ["read", "write"]) {
+    const { data } = await this.client.post("/auth/api-keys", { name, scopes });
+    return data as {
+      id: string;
+      name: string;
+      prefix: string;
+      key: string;          // ← one-time raw key
+      created_at: string;
+    };
+  }
+
+  /** Revoke (soft-delete) an API key by id. */
+  async revokeApiKey(keyId: string) {
+    const { data } = await this.client.delete(`/auth/api-keys/${keyId}`);
+    return data;
+  }
 }
 
 export const api = new APIClient();

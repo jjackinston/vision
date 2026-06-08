@@ -98,6 +98,15 @@ logs: ## Tail Docker logs
 shell-backend: ## Open a Python shell with app context
 	cd backend && python -c "from app.core.config import settings; import IPython; IPython.embed()"
 
+worker: ## Start Celery worker (run 'make dev-data' first)
+	cd backend && celery -A app.workers.tasks worker --loglevel=info --concurrency=2
+
+beat: ## Start Celery beat scheduler — run ONCE alongside the worker
+	cd backend && celery -A app.workers.tasks beat --loglevel=info --scheduler celery.beat.PersistentScheduler
+
+lint: ## Lint backend (ruff) + frontend (eslint)
+	cd backend && ruff check app && cd ../frontend && npm run lint
+
 stripe-listen: ## Start Stripe webhook listener (requires Stripe CLI)
 	stripe listen --forward-to localhost:8000/api/v1/webhooks/stripe
 

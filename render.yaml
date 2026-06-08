@@ -169,6 +169,47 @@ services:
       - key: CLERK_SECRET_KEY
         sync: false
 
+  # ── Celery Beat scheduler ─────────────────────────────────
+  # Separate from the worker so only ONE beat instance ever runs.
+  # If the worker service also ran beat, you'd get duplicate scheduled tasks.
+  - type: worker
+    name: sellervision-celery-beat
+    runtime: python
+    plan: starter
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A app.workers.tasks beat --loglevel=info --scheduler celery.beat.PersistentScheduler
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        fromService:
+          name: sellervision-api
+          type: web
+          envVarKey: SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sellervision-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: sellervision-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: sellervision-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: sellervision-redis
+          type: redis
+          property: connectionString
+      - key: CLERK_SECRET_KEY
+        sync: false
+
   # ── Managed Redis ──────────────────────────────────────────
   - type: redis
     name: sellervision-redis
