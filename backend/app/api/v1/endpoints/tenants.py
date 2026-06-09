@@ -143,6 +143,43 @@ async def remove_member(
     return {"removed": member_id}
 
 
+@router.get("/current/settings")
+async def get_tenant_settings(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Return the tenant's settings JSON blob."""
+    from app.models.tenant import Tenant
+    result = await db.execute(select(Tenant.settings).where(Tenant.id == user.tenant_id))
+    settings = result.scalar_one_or_none()
+    return settings or {}
+
+
+@router.patch("/current/settings")
+async def patch_tenant_settings(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Merge-patch the tenant's settings JSON blob.
+    Existing keys not in `body` are preserved; keys in `body` overwrite.
+    Used by onboarding to mark completion, feature flags, UI preferences, etc.
+    """
+    from sqlalchemy import update
+    from app.models.tenant import Tenant
+
+    result = await db.execute(select(Tenant.settings).where(Tenant.id == user.tenant_id))
+    current = result.scalar_one_or_none() or {}
+    merged = {**current, **body}
+
+    await db.execute(
+        update(Tenant).where(Tenant.id == user.tenant_id).values(settings=merged)
+    )
+    await db.commit()
+    return {"settings": merged}
+
+
 @router.put("/current/members/{member_id}/role")
 async def update_member_role(
     member_id: str,

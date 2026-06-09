@@ -12,9 +12,15 @@
 import { test, expect, Page } from "@playwright/test";
 import { mockAllApis, mockRoute, FIXTURES } from "./helpers/api-mocks";
 
+/**
+ * Navigate to the billing section of the settings page.
+ * Billing lives at /settings?section=billing (not a standalone /billing route).
+ * The StripeParamHandler in the settings page reads `section=billing` from the
+ * query string and activates the billing tab automatically.
+ */
 async function goBilling(page: Page, overrides = {}) {
   await mockAllApis(page, overrides);
-  await page.goto("/billing");
+  await page.goto("/settings?section=billing");
   await page.waitForLoadState("networkidle");
 }
 
@@ -60,7 +66,7 @@ test.describe("Billing — current plan & status", () => {
     await mockAllApis(page, {
       billing: { subscription: null, plan: "Starter", status: "trialing", trial_ends_at: null, current_period_end: null },
     });
-    await page.goto("/billing");
+    await page.goto("/settings?section=billing");
     await page.waitForLoadState("networkidle");
     // Should still render plan cards, not crash
     await expect(page.locator("text=Application error")).not.toBeVisible();
@@ -85,7 +91,7 @@ test.describe("Billing — upgrade flow", () => {
       }
     });
 
-    await page.goto("/billing");
+    await page.goto("/settings?section=billing");
     await page.waitForLoadState("networkidle");
 
     // Click first upgrade button (could be for any plan other than current)

@@ -298,9 +298,13 @@ export async function mockAllApis(page: Page, overrides: Partial<typeof FIXTURES
   await mockRoute(page, `${base}/auth/me`, F.me);
   await mockRoute(page, `${base}/auth/sync`, F.me);
 
-  // Tenant
+  // Tenant — mock both /me (legacy) and /current (real backend routes)
   await mockRoute(page, `${base}/tenants/me`, F.tenant);
-  await mockRoute(page, `${base}/tenants/me/settings`, { updated: true });
+  await mockRoute(page, `${base}/tenants/current`, F.tenant);
+  await mockRoute(page, `${base}/tenants/me/settings`, { settings: {} });
+  await mockRoute(page, `${base}/tenants/current/settings`, { settings: {} });
+  await mockRoute(page, `${base}/tenants/current/members`, []);
+  await mockRoute(page, `${base}/auth/api-keys`, []);
 
   // Products
   await mockRoute(page, `${base}/products/`, F.products);

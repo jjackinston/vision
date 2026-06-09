@@ -412,7 +412,7 @@ class APIClient {
 
   /** Update tenant-level settings (e.g. mark onboarding complete). */
   async patchTenantSettings(data: Record<string, unknown>) {
-    const { data: result } = await this.client.patch("/tenants/me/settings", data);
+    const { data: result } = await this.client.patch("/tenants/current/settings", data);
     return result;
   }
 

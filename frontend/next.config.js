@@ -34,6 +34,21 @@ const nextConfig = {
         { key: "X-XSS-Protection", value: "1; mode=block" },
         { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains; preload" },
+        // Restrict access to browser APIs that SellerVision doesn't need
+        {
+          key: "Permissions-Policy",
+          value: [
+            "camera=()",
+            "microphone=()",
+            "geolocation=()",
+            "payment=(self)",      // allow Stripe payment request API
+            "usb=()",
+            "bluetooth=()",
+            "magnetometer=()",
+            "gyroscope=()",
+            "accelerometer=()",
+          ].join(", "),
+        },
       ],
     },
     {
